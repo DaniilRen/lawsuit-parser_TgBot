@@ -18,7 +18,8 @@ class User(Base):
     username = Column(String(64))
     full_name = Column(String(255))
     is_allowed = Column(Boolean, default=False)
-    schedule = Column(String(16), default='weekly')  # daily | weekly | monthly
+    schedule = Column(String(16), default='weekly')
+    notify_on_no_change = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_seen_at = Column(DateTime, default=datetime.utcnow)
 

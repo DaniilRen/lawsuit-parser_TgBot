@@ -8,7 +8,7 @@ from src.config import Config
 from src.database.db_manager import BotDatabase
 from src.api_client.parser_client import ParserClient, ParserApiError
 from src.bot import formatting
-from src.bot.keyboards import main_menu, watch_actions, schedule_menu
+from src.bot.keyboards import main_menu, watch_actions, schedule_menu, notifications_menu
 from src.utils.logger import setup_logger
 
 
@@ -118,6 +118,7 @@ async def cmd_help(message: Message):
         '/list — список моих подписок\n'
         '/check ИНН — проверить сейчас\n'
         '/schedule — изменить расписание\n'
+        '/notify — уведомления без изменений\n'
         '/help — эта справка',
         parse_mode=None,
     )
@@ -286,3 +287,48 @@ async def _run_check(chat_id: int, inn: str):
     except Exception as e:
         logger.exception('Unexpected error while checking INN')
         await _send(chat_id, f'Внутренняя ошибка: {e}')
+
+
+@router.message(Command('notify'))
+@router.message(F.text == 'Уведомления')
+async def cmd_notify(message: Message):
+    if not await _guard(message):
+        return
+
+    enabled = _db.get_notify_on_no_change(message.from_user.id)
+
+    await message.answer(
+        'Уведомления о плановых проверках.\n\n'
+        'По умолчанию бот молчит, если данные не изменились, '
+        'и присылает сообщение только при обнаружении изменений.\n\n'
+        'Если включить эту опцию, бот будет присылать сообщение '
+        'после каждой плановой проверки, даже если изменений нет.',
+        reply_markup=notifications_menu(enabled),
+        parse_mode=None,
+    )
+
+
+@router.callback_query(F.data.startswith('notify_no_change:'))
+async def on_notify_no_change(callback: CallbackQuery):
+    if not await _guard_callback(callback):
+        return
+
+    action = callback.data.split(':', 1)[1]
+    enabled = (action == 'on')
+
+    if _db.set_notify_on_no_change(callback.from_user.id, enabled):
+        state = 'включено' if enabled else 'выключено'
+        await callback.answer(f'Уведомления без изменений: {state}')
+
+        new_menu = notifications_menu(enabled)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=new_menu)
+        except Exception:
+            pass
+    else:
+        await callback.answer('Не удалось обновить', show_alert=True)
+
+
+@router.callback_query(F.data == 'noop')
+async def on_noop(callback: CallbackQuery):
+    await callback.answer()

@@ -32,6 +32,7 @@ class BotDatabase:
                     username=username,
                     full_name=full_name,
                     is_allowed=(telegram_id == Config.ADMIN_TELEGRAM_ID),
+                    notify_on_no_change=False,
                 )
                 session.add(user)
             else:
@@ -151,6 +152,26 @@ class BotDatabase:
             user.schedule = schedule
             session.commit()
             return True
+        finally:
+            session.close()
+
+    def set_notify_on_no_change(self, telegram_id: int, enabled: bool) -> bool:
+        session = self.get_session()
+        try:
+            user = session.query(User).filter(User.telegram_id == telegram_id).first()
+            if not user:
+                return False
+            user.notify_on_no_change = bool(enabled)
+            session.commit()
+            return True
+        finally:
+            session.close()
+
+    def get_notify_on_no_change(self, telegram_id: int) -> bool:
+        session = self.get_session()
+        try:
+            user = session.query(User).filter(User.telegram_id == telegram_id).first()
+            return bool(user and user.notify_on_no_change)
         finally:
             session.close()
 

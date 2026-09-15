@@ -90,6 +90,7 @@ class WatchScheduler:
             if not user or not user.is_allowed:
                 return
             telegram_id = user.telegram_id
+            notify_on_no_change = bool(user.notify_on_no_change)
             inn = watch.inn
         finally:
             session.close()
@@ -106,10 +107,6 @@ class WatchScheduler:
             logger.exception(f'Unexpected error checking {inn}')
             return
 
-        if not diff.get('changed'):
-            logger.info(f'No changes for {inn}')
-            return
-
         company_name = None
         try:
             latest = await self.parser.get_latest(inn)
@@ -121,12 +118,21 @@ class WatchScheduler:
         except Exception:
             company_name = None
 
-        text = formatting.format_diff_message(inn, diff, company_name)
+        changed = bool(diff.get('changed'))
+
+        if not changed and not notify_on_no_change:
+            logger.info(f'No changes for {inn}, skipping notification')
+            return
+
+        if changed:
+            text = formatting.format_diff_message(inn, diff, company_name)
+        else:
+            text = formatting.format_no_change_message(inn, company_name)
 
         try:
             bot = get_bot()
             await bot.send_message(chat_id=telegram_id, text=text, parse_mode=None)
-            logger.info(f'Notified user {telegram_id} about changes in {inn}')
+            logger.info(f'Notified user {telegram_id} about INN {inn} (changed={changed})')
         except Exception:
             logger.exception(f'Failed to send notification for {inn}')
 
