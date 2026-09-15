@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import create_engine
@@ -5,6 +6,9 @@ from sqlalchemy.orm import sessionmaker
 
 from src.config import Config
 from src.database.models import Base, User, Watch, NotificationLog
+
+
+ALLOWED_SCHEDULES = ('every_2_min', 'hourly', 'daily', 'weekly', 'monthly')
 
 
 class BotDatabase:
@@ -137,7 +141,7 @@ class BotDatabase:
             session.close()
 
     def set_user_schedule(self, telegram_id: int, schedule: str) -> bool:
-        if schedule not in ('daily', 'weekly', 'monthly'):
+        if schedule not in ALLOWED_SCHEDULES:
             return False
         session = self.get_session()
         try:
@@ -164,7 +168,6 @@ class BotDatabase:
             session.close()
 
     def update_watch_checked(self, watch_id: int, diff_hash: str) -> None:
-        from datetime import datetime
         session = self.get_session()
         try:
             watch = session.query(Watch).filter(Watch.id == watch_id).first()

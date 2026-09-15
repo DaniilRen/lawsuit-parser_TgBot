@@ -1,6 +1,4 @@
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 
 from src.config import Config
 from src.bot.handlers import router
@@ -18,10 +16,7 @@ def get_bot() -> Bot:
 
 def create_bot() -> Bot:
     global _bot, _dp
-    _bot = Bot(
-        token=Config.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    _bot = Bot(token=Config.BOT_TOKEN)
     _dp = Dispatcher()
     _dp.include_router(router)
     return _bot

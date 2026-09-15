@@ -21,6 +21,8 @@ def watch_actions(inn: str) -> InlineKeyboardMarkup:
 
 def schedule_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='Каждые 2 минуты', callback_data='schedule:every_2_min')],
+        [InlineKeyboardButton(text='Каждый час', callback_data='schedule:hourly')],
         [InlineKeyboardButton(text='Ежедневно', callback_data='schedule:daily')],
         [InlineKeyboardButton(text='Еженедельно', callback_data='schedule:weekly')],
         [InlineKeyboardButton(text='Ежемесячно', callback_data='schedule:monthly')],

@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -19,7 +18,7 @@ class WatchScheduler:
         self.db = db
         self.parser = parser
         self.scheduler = AsyncIOScheduler()
-        self._job_map = {}  # watch_id -> job
+        self._job_map = {}
 
     def start(self):
         self.scheduler.start()
@@ -44,17 +43,24 @@ class WatchScheduler:
             self._schedule_watch(watch)
 
     def _interval_for_schedule(self, schedule: str) -> dict:
+        if schedule == 'every_2_min':
+            return {'minutes': 2}
+        if schedule == 'hourly':
+            return {'hours': 1}
         if schedule == 'daily':
             return {'hours': 24}
+        if schedule == 'weekly':
+            return {'days': 7}
         if schedule == 'monthly':
             return {'days': 30}
-        return {'days': 7}  # weekly default
+        return {'days': 7}
 
     def _schedule_watch(self, watch):
         user_schedule = 'weekly'
         try:
             session = self.db.get_session()
-            user = session.query(__import__('src.database.models', fromlist=['User']).User).filter_by(id=watch.user_id).first()
+            from src.database.models import User
+            user = session.query(User).filter_by(id=watch.user_id).first()
             if user:
                 user_schedule = user.schedule or 'weekly'
             session.close()
@@ -96,7 +102,7 @@ class WatchScheduler:
         except ParserApiError as e:
             logger.error(f'Parser API error for {inn}: {e.code} - {e.message}')
             return
-        except Exception as e:
+        except Exception:
             logger.exception(f'Unexpected error checking {inn}')
             return
 
@@ -104,9 +110,9 @@ class WatchScheduler:
             logger.info(f'No changes for {inn}')
             return
 
+        company_name = None
         try:
             latest = await self.parser.get_latest(inn)
-            company_name = None
             for source_data in latest.get('sources', {}).values():
                 if isinstance(source_data, dict):
                     company_name = source_data.get('company_name') or source_data.get('short_name')
@@ -119,14 +125,10 @@ class WatchScheduler:
 
         try:
             bot = get_bot()
-            await bot.send_message(chat_id=telegram_id, text=text)
+            await bot.send_message(chat_id=telegram_id, text=text, parse_mode=None)
             logger.info(f'Notified user {telegram_id} about changes in {inn}')
-        except Exception as e:
+        except Exception:
             logger.exception(f'Failed to send notification for {inn}')
-
-
-def get_scheduler() -> WatchScheduler:
-    raise RuntimeError('Use create_scheduler instead')
 
 
 def create_scheduler(db: BotDatabase, parser: ParserClient) -> WatchScheduler:
