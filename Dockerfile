@@ -9,17 +9,28 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir \
+        -i https://pypi.tuna.tsinghua.edu.cn/simple \
+        --trusted-host pypi.tuna.tsinghua.edu.cn \
+        -r requirements.txt
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_HOME=/app
 
 COPY . .
 
+COPY whitelist.txt /app/whitelist.txt
+
 RUN mkdir -p logs
 
-RUN groupadd -r botuser && useradd -r -g botuser botuser
-RUN chown -R botuser:botuser /app
+RUN groupadd -r botuser && useradd -r -g botuser botuser \
+    && chown -R botuser:botuser /app /opt/venv
 
 USER botuser
-
-ENV PYTHONUNBUFFERED=1
 
 CMD ["python", "-m", "src.main"]

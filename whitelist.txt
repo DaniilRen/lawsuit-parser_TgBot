@@ -1,0 +1,12 @@
+# Whitelist — one Telegram ID per line.
+# Lines starting with # are ignored.
+# Blank lines are ignored.
+# This file is read on every bot startup and new IDs are added to the DB.
+# Removing an ID here does NOT revoke access — use /deny or SQL for that.
+
+# Admin (also set via ADMIN_TELEGRAM_ID in .env)
+480616246
+
+# Add more IDs below, one per line:
+# 111111111    # Ivanov
+# 222222222    # Petrov

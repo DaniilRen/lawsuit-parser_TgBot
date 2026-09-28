@@ -3,18 +3,27 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: ghcr.io/daniilren/lawsuit-bot:latest
     container_name: company_info_bot
+    # network_mode: "host"
     env_file:
       - .env
     environment:
       - PARSER_API_URL=http://company_parser_api:5050
+      - WHITELIST_FILE=/app/whitelist.txt
+      - PROXY_URL=${PROXY_URL}
     volumes:
-      - ./logs:/app/logs
-      - ./bot_data.db:/app/bot_data.db
+      - bot_data:/data
+      - ./whitelist.txt:/app/whitelist.txt
     networks:
       - parser-net
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   parser-net:
     external: true
+
+volumes:
+  bot_data:

@@ -10,6 +10,46 @@ from src.scheduler.scheduler import create_scheduler
 from src.utils.logger import setup_logger
 
 
+def _seed_whitelist(db: BotDatabase, logger) -> None:
+    ids = Config.all_allowed_ids()
+    if not ids:
+        logger.info('No whitelist IDs configured')
+        return
+
+    added = 0
+    flipped = 0
+
+    for telegram_id in ids:
+        try:
+            existed_before = False
+            session = db.get_session()
+            try:
+                from src.database.models import User
+                existed_before = (
+                    session.query(User)
+                    .filter(User.telegram_id == telegram_id)
+                    .first()
+                    is not None
+                )
+            finally:
+                session.close()
+
+            if existed_before:
+                if db.allow_user_if_missing(telegram_id):
+                    flipped += 1
+            else:
+                db.create_allowed_placeholder(telegram_id)
+                added += 1
+        except Exception as e:
+            logger.error(f'Failed to seed whitelist for {telegram_id}: {e}')
+
+    logger.info(
+        f'Whitelist seeded: {added} new, {flipped} re-allowed, '
+        f'{len(ids)} total configured'
+    )
+    logger.info(f'Whitelist source: {Config.WHITELIST_FILE}')
+
+
 async def main():
     Config.validate()
     logger = setup_logger()
@@ -27,6 +67,8 @@ async def main():
         logger.error('Make sure the parser API is running.')
         await parser.close()
         return 1
+
+    _seed_whitelist(db, logger)
 
     init_handlers(db, parser)
 

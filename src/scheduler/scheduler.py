@@ -49,8 +49,6 @@ class WatchScheduler:
             return {'hours': 1}
         if schedule == 'daily':
             return {'hours': 24}
-        if schedule == 'weekly':
-            return {'days': 7}
         if schedule == 'monthly':
             return {'days': 30}
         return {'days': 7}

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
 
 from src.config import Config
@@ -17,7 +17,27 @@ class BotDatabase:
         connect_args = {'check_same_thread': False} if url.startswith('sqlite') else {}
         self.engine = create_engine(url, connect_args=connect_args, echo=False)
         self.SessionLocal = sessionmaker(bind=self.engine, autoflush=False, autocommit=False)
+
         Base.metadata.create_all(self.engine)
+        self._run_migrations()
+
+    def _run_migrations(self):
+        self._ensure_column('users', 'notify_on_no_change', 'BOOLEAN DEFAULT 0')
+
+    def _ensure_column(self, table: str, column: str, definition: str):
+        try:
+            inspector = inspect(self.engine)
+            existing = {c['name'] for c in inspector.get_columns(table)}
+            if column in existing:
+                return
+        except Exception:
+            return
+
+        try:
+            with self.engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {definition}'))
+        except Exception:
+            pass
 
     def get_session(self):
         return self.SessionLocal()
@@ -36,8 +56,10 @@ class BotDatabase:
                 )
                 session.add(user)
             else:
-                user.username = username
-                user.full_name = full_name
+                if username:
+                    user.username = username
+                if full_name:
+                    user.full_name = full_name
             session.commit()
             session.refresh(user)
             return user
@@ -68,6 +90,41 @@ class BotDatabase:
                 session.commit()
                 session.refresh(user)
             return user
+        finally:
+            session.close()
+
+    def allow_user_if_missing(self, telegram_id: int) -> bool:
+        session = self.get_session()
+        try:
+            user = session.query(User).filter(User.telegram_id == telegram_id).first()
+            if not user:
+                return False
+            if user.is_allowed:
+                return False
+            user.is_allowed = True
+            session.commit()
+            return True
+        finally:
+            session.close()
+
+    def create_allowed_placeholder(self, telegram_id: int) -> None:
+        session = self.get_session()
+        try:
+            user = session.query(User).filter(User.telegram_id == telegram_id).first()
+            if user:
+                if not user.is_allowed:
+                    user.is_allowed = True
+                    session.commit()
+                return
+            user = User(
+                telegram_id=telegram_id,
+                username=None,
+                full_name=None,
+                is_allowed=True,
+                notify_on_no_change=False,
+            )
+            session.add(user)
+            session.commit()
         finally:
             session.close()
 

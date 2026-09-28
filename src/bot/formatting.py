@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 SOURCE_LABELS = {
     'nalog': 'ФНС (Прозрачный бизнес)',
     'egrul': 'ЕГРЮЛ',
+    'fedresurs': 'Федресурс',
     'ras': 'Арбитражные суды',
 }
 
@@ -16,12 +17,16 @@ FIELD_LABELS = {
     'kpp': 'КПП',
     'registration_date': 'Дата регистрации',
     'legal_address': 'Юридический адрес',
+    'company_address': 'Адрес по данным компании',
     'status': 'Статус',
     'main_activity': 'Основной вид деятельности',
     'tax_office': 'Налоговый орган',
     'authorized_capital': 'Уставный капитал',
-    'director.name': 'Руководитель',
-    'director.position': 'Должность руководителя',
+    'legal_form': 'Правовая форма',
+    'director_name': 'Руководитель',
+    'director_inn': 'ИНН руководителя',
+    'director_position': 'Должность руководителя',
+    'director_entry_date': 'Дата внесения данных о руководителе',
     'has_invalid_info': 'Недостоверные сведения',
     'has_tax_debts': 'Налоговые задолженности',
     'has_tax_offenses': 'Налоговые правонарушения',

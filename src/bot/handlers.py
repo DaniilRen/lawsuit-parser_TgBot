@@ -34,6 +34,10 @@ def init_handlers(db: BotDatabase, parser: ParserClient) -> None:
     _parser = parser
 
 
+def _is_admin(telegram_id: int) -> bool:
+    return telegram_id == Config.ADMIN_TELEGRAM_ID
+
+
 def _is_valid_inn(inn: str) -> bool:
     if not inn or not inn.isdigit():
         return False
@@ -84,16 +88,16 @@ async def _send(chat_id: int, text: str) -> None:
 
 @router.message(Command('start'))
 async def cmd_start(message: Message):
-    _db.get_or_create_user(
+    user = _db.get_or_create_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username or '',
         full_name=message.from_user.full_name or '',
     )
 
-    if message.from_user.id == Config.ADMIN_TELEGRAM_ID:
-        _db.allow_user(message.from_user.id)
-
-    if not await _guard(message):
+    if not user.is_allowed:
+        await message.answer(
+            'Доступ запрещён. Обратитесь к администратору для добавления в белый список.'
+        )
         return
 
     await message.answer(
@@ -119,7 +123,11 @@ async def cmd_help(message: Message):
         '/check ИНН — проверить сейчас\n'
         '/schedule — изменить расписание\n'
         '/notify — уведомления без изменений\n'
-        '/help — эта справка',
+        '/help — эта справка\n\n'
+        'Только для администратора:\n'
+        '/allow ID — добавить в белый список\n'
+        '/deny ID — удалить из белого списка\n'
+        '/users — показать белый список',
         parse_mode=None,
     )
 
@@ -212,7 +220,30 @@ async def on_check_button(message: Message):
 async def cmd_schedule(message: Message):
     if not await _guard(message):
         return
-    await message.answer('Выберите частоту проверок:', reply_markup=schedule_menu(), parse_mode=None)
+    await message.answer(
+        'Выберите частоту проверок:',
+        reply_markup=schedule_menu(),
+        parse_mode=None,
+    )
+
+
+@router.message(Command('notify'))
+@router.message(F.text == 'Уведомления')
+async def cmd_notify(message: Message):
+    if not await _guard(message):
+        return
+
+    enabled = _db.get_notify_on_no_change(message.from_user.id)
+
+    await message.answer(
+        'Уведомления о плановых проверках.\n\n'
+        'По умолчанию бот молчит, если данные не изменились, '
+        'и присылает сообщение только при обнаружении изменений.\n\n'
+        'Если включить эту опцию, бот будет присылать сообщение '
+        'после каждой плановой проверки, даже если изменений нет.',
+        reply_markup=notifications_menu(enabled),
+        parse_mode=None,
+    )
 
 
 @router.message(F.text == 'Добавить ИНН')
@@ -239,6 +270,30 @@ async def on_schedule(callback: CallbackQuery):
         await callback.answer('Не удалось обновить', show_alert=True)
 
 
+@router.callback_query(F.data.startswith('notify_no_change:'))
+async def on_notify_no_change(callback: CallbackQuery):
+    if not await _guard_callback(callback):
+        return
+
+    action = callback.data.split(':', 1)[1]
+    enabled = (action == 'on')
+
+    if _db.set_notify_on_no_change(callback.from_user.id, enabled):
+        state = 'включено' if enabled else 'выключено'
+        await callback.answer(f'Уведомления без изменений: {state}')
+        try:
+            await callback.message.edit_reply_markup(reply_markup=notifications_menu(enabled))
+        except Exception:
+            pass
+    else:
+        await callback.answer('Не удалось обновить', show_alert=True)
+
+
+@router.callback_query(F.data == 'noop')
+async def on_noop(callback: CallbackQuery):
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith('check:'))
 async def on_check_callback(callback: CallbackQuery):
     if not await _guard_callback(callback):
@@ -259,6 +314,88 @@ async def on_unwatch_callback(callback: CallbackQuery):
         await callback.message.edit_text(f'Подписка на ИНН {inn} удалена.')
     else:
         await callback.answer('Не найдена', show_alert=True)
+
+
+@router.message(Command('allow'))
+async def cmd_allow(message: Message):
+    if not _is_admin(message.from_user.id):
+        await message.answer('Команда доступна только администратору.', parse_mode=None)
+        return
+
+    args = (message.text or '').split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer('Использование: /allow ID', parse_mode=None)
+        return
+
+    try:
+        target_id = int(args[1].strip())
+    except ValueError:
+        await message.answer('ID должен быть числом.', parse_mode=None)
+        return
+
+    user = _db.allow_user(target_id)
+    if user:
+        await message.answer(
+            f'Пользователь {target_id} добавлен в белый список.',
+            parse_mode=None,
+        )
+        try:
+            await message.bot.send_message(
+                chat_id=target_id,
+                text='Вам разрешён доступ к боту. Отправьте /start для начала работы.',
+                parse_mode=None,
+            )
+        except Exception:
+            pass
+    else:
+        await message.answer(
+            f'Пользователь {target_id} не найден. Он должен сначала отправить /start.',
+            parse_mode=None,
+        )
+
+
+@router.message(Command('deny'))
+async def cmd_deny(message: Message):
+    if not _is_admin(message.from_user.id):
+        await message.answer('Команда доступна только администратору.', parse_mode=None)
+        return
+
+    args = (message.text or '').split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer('Использование: /deny ID', parse_mode=None)
+        return
+
+    try:
+        target_id = int(args[1].strip())
+    except ValueError:
+        await message.answer('ID должен быть числом.', parse_mode=None)
+        return
+
+    if _db.revoke_user(target_id):
+        await message.answer(
+            f'Пользователь {target_id} удалён из белого списка.',
+            parse_mode=None,
+        )
+    else:
+        await message.answer(f'Пользователь {target_id} не найден.', parse_mode=None)
+
+
+@router.message(Command('users'))
+async def cmd_users(message: Message):
+    if not _is_admin(message.from_user.id):
+        await message.answer('Команда доступна только администратору.', parse_mode=None)
+        return
+
+    users = _db.list_allowed_users()
+    if not users:
+        await message.answer('Белый список пуст.', parse_mode=None)
+        return
+
+    lines = ['Белый список:']
+    for u in users:
+        name = u.full_name or u.username or '—'
+        lines.append(f'• {u.telegram_id} — {name}')
+    await message.answer('\n'.join(lines), parse_mode=None)
 
 
 async def _run_check(chat_id: int, inn: str):
@@ -287,48 +424,3 @@ async def _run_check(chat_id: int, inn: str):
     except Exception as e:
         logger.exception('Unexpected error while checking INN')
         await _send(chat_id, f'Внутренняя ошибка: {e}')
-
-
-@router.message(Command('notify'))
-@router.message(F.text == 'Уведомления')
-async def cmd_notify(message: Message):
-    if not await _guard(message):
-        return
-
-    enabled = _db.get_notify_on_no_change(message.from_user.id)
-
-    await message.answer(
-        'Уведомления о плановых проверках.\n\n'
-        'По умолчанию бот молчит, если данные не изменились, '
-        'и присылает сообщение только при обнаружении изменений.\n\n'
-        'Если включить эту опцию, бот будет присылать сообщение '
-        'после каждой плановой проверки, даже если изменений нет.',
-        reply_markup=notifications_menu(enabled),
-        parse_mode=None,
-    )
-
-
-@router.callback_query(F.data.startswith('notify_no_change:'))
-async def on_notify_no_change(callback: CallbackQuery):
-    if not await _guard_callback(callback):
-        return
-
-    action = callback.data.split(':', 1)[1]
-    enabled = (action == 'on')
-
-    if _db.set_notify_on_no_change(callback.from_user.id, enabled):
-        state = 'включено' if enabled else 'выключено'
-        await callback.answer(f'Уведомления без изменений: {state}')
-
-        new_menu = notifications_menu(enabled)
-        try:
-            await callback.message.edit_reply_markup(reply_markup=new_menu)
-        except Exception:
-            pass
-    else:
-        await callback.answer('Не удалось обновить', show_alert=True)
-
-
-@router.callback_query(F.data == 'noop')
-async def on_noop(callback: CallbackQuery):
-    await callback.answer()
