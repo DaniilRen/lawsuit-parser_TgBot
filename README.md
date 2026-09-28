@@ -38,7 +38,7 @@ Edit `.env`:
 
 - `BOT_TOKEN` — from @BotFather
 - `ADMIN_TELEGRAM_ID` — your Telegram user ID (get it from @userinfobot)
-- `PARSER_API_URL` — where the parser API runs (e.g. `http://127.0.0.1:8000`)
+- `PARSER_API_URL` — where the parser API runs (e.g. `http://127.0.0.1:5050`)
 - `PARSER_API_KEY` — if the parser API requires one
 
 ## Run

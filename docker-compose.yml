@@ -1,18 +1,20 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: company_info_bot
     env_file:
       - .env
+    environment:
+      - PARSER_API_URL=http://company_parser_api:5050
     volumes:
       - ./logs:/app/logs
       - ./bot_data.db:/app/bot_data.db
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
-      - bot_network
+      - parser-net
+    restart: unless-stopped
 
 networks:
-  bot_network:
-    driver: bridge
+  parser-net:
+    external: true
